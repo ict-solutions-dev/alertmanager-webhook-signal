@@ -103,6 +103,28 @@ docker exec signal-api curl -s \
   "http://signal-api:8080/v1/groups/+421918533760" | jq '.[] | {name, id}'
 ```
 
+### Message templates
+
+Messages are rendered with Go [`text/template`](https://pkg.go.dev/text/template). The built-in default produces a
+compact, readable alert (title, summary, severity, instance, job, environment, duration, generator link). Override it
+with `TEMPLATE_ALERTMANAGER` / `TEMPLATE_GRAFANA` (env) or the `templates:` section (static config).
+
+Alertmanager template runs **once per alert** with these fields:
+
+| Field | Description |
+| --- | --- |
+| `.Alertname` | Alert name |
+| `.Alert.Status` | `firing` or `resolved` |
+| `.Alert.Labels.<key>` | A label value, e.g. `.Alert.Labels.severity` |
+| `.Annotations.<key>` | An annotation, e.g. `.Annotations.summary` |
+| `.Alert.StartsAt` / `.Alert.EndsAt` | RFC3339 timestamps |
+| `.Alert.GeneratorURL` | Link to the firing rule |
+| `.ExternalURL` | Alertmanager base URL (useful for silence links) |
+| `.Config.GeneratorURL` | Whether the generator URL is enabled |
+
+Extra template functions: `since` (elapsed time from an RFC3339 timestamp), `humanizeDuration`, `toUpper`, `toLower`.
+For example: `⏱️ Duration: {{ humanizeDuration (since .Alert.StartsAt) }}`.
+
 ## Docker Compose
 
 The service must share a network with your `signal-api` container so it can reach it internally. A full example
