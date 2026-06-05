@@ -1,0 +1,69 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+
+categories:
+  - title: '🚀 Features'
+    labels:
+      - 'feat'
+  - title: '🐛 Bug Fixes'
+    labels:
+      - 'fix'
+  - title: '🔧 Maintenance'
+    labels:
+      - 'chore'
+      - 'refactor'
+  - title: '📝 Documentation'
+    labels:
+      - 'docs'
+  - title: '🧪 Tests'
+    labels:
+      - 'test'
+
+autolabeler:
+  - label: 'feat'
+    title:
+      - '/^feat(\(.+\))?[!]?:/'
+  - label: 'fix'
+    title:
+      - '/^fix(\(.+\))?[!]?:/'
+  - label: 'chore'
+    title:
+      - '/^chore(\(.+\))?[!]?:/'
+  - label: 'refactor'
+    title:
+      - '/^refactor(\(.+\))?[!]?:/'
+  - label: 'docs'
+    title:
+      - '/^docs(\(.+\))?[!]?:/'
+  - label: 'test'
+    title:
+      - '/^test(\(.+\))?[!]?:/'
+  - label: 'breaking'
+    title:
+      - '/^[a-z]+(\(.+\))?!:/'
+
+version-resolver:
+  major:
+    labels:
+      - 'breaking'
+  minor:
+    labels:
+      - 'feat'
+  patch:
+    labels:
+      - 'fix'
+      - 'chore'
+      - 'refactor'
+      - 'docs'
+      - 'test'
+  default: patch
+
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+change-title-escapes: '\<*_&'
+
+template: |
+  ## 🎉 What's Changed
+
+  $CHANGES
+
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION

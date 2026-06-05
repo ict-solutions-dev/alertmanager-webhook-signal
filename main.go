@@ -4,10 +4,12 @@ import (
 	"alertmanager-webhook-signal/internal/alerts"
 	"alertmanager-webhook-signal/internal/config"
 	"alertmanager-webhook-signal/internal/util"
+	_ "embed"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"text/template"
 	"time"
 
@@ -15,7 +17,11 @@ import (
 	"github.com/schlauerlauer/go-middleware"
 )
 
-const appVersion = "1.1.1"
+//go:embed version.txt
+var appVersionRaw string
+
+// appVersion is the running version, sourced from version.txt at build time.
+var appVersion = strings.TrimSpace(appVersionRaw)
 
 func main() {
 	slog.SetDefault(slog.New(

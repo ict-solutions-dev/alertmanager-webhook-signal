@@ -76,3 +76,29 @@ labels:
 - name: needs more info
   color: 'FFD700'
   description: Needs More Information 🤔
+
+# Conventional Commit labels (applied by the Release Drafter autolabeler)
+
+- name: feat
+  color: '32CD32'
+  description: New feature 🚀
+
+- name: fix
+  color: 'FF4500'
+  description: Bug fix 🐞
+
+- name: chore
+  color: 'C0C0C0'
+  description: Maintenance / chore 🔧
+
+- name: docs
+  color: '008B8B'
+  description: Documentation 📝
+
+- name: test
+  color: 'ADFF2F'
+  description: Tests 🧪
+
+- name: breaking
+  color: '8B0000'
+  description: Breaking change 🛑

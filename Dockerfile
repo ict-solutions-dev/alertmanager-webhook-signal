@@ -11,7 +11,7 @@ WORKDIR /src
 
 COPY . .
 
-ARG APP_VERSION=dev
+# Version is sourced from version.txt (embedded via //go:embed in main.go).
 RUN go build -trimpath -ldflags="-s -w" -o /out/alertmanager-webhook-signal .
 
 # ---- Runtime stage ----

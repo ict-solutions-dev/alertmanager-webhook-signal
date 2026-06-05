@@ -174,6 +174,18 @@ Images are published to the [GitHub Container Registry](https://github.com/ict-s
 
 Built for `linux/amd64` and `linux/arm64` as a static (CGO-free) binary on a minimal Alpine base.
 
+## Versioning & Releases
+
+Releases follow [Conventional Commits](https://www.conventionalcommits.org/) via
+[Release Drafter](https://github.com/release-drafter/release-drafter):
+
+- PR titles are auto-labelled (`feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `breaking`).
+- Each merge into `develop` updates a **draft release** and bumps [`version.txt`](version.txt) to the next
+  `vX.Y.Z-edge` (`breaking` → major, `feat` → minor, everything else → patch). The version is embedded into the
+  binary via `//go:embed`, so `/version` always reflects what is in the codebase.
+- To cut a release, publish the draft in the GitHub UI — that creates the `vX.Y.Z` tag, which triggers the Docker
+  pipeline to publish `ghcr.io/...:X.Y.Z`.
+
 ## CI/CD Pipeline
 
 The [GitHub Actions workflow](.github/workflows/docker.yml) runs on push to `develop`, version tags (`v*`), pull

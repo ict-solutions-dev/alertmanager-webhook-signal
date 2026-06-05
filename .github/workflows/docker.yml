@@ -61,7 +61,6 @@ jobs:
           fi
 
           echo "tags=${IMAGE_ID}:${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         id: build
@@ -72,8 +71,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.prep.outputs.tags }}
-          build-args: |
-            APP_VERSION=${{ steps.prep.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
