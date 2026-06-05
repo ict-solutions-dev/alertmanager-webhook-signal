@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"runtime/debug"
+	"strings"
 	"text/template"
 	"time"
 
@@ -53,6 +54,105 @@ func resolveVersion() string {
 	return "dev-" + revision + suffix
 }
 
+// templateFuncs are made available to both message templates.
+var templateFuncs = template.FuncMap{
+	"toUpper":          strings.ToUpper,
+	"toLower":          strings.ToLower,
+	"since":            since,
+	"humanizeDuration": humanizeDuration,
+}
+
+// since returns the elapsed time since an RFC3339 timestamp (e.g. Alert.StartsAt).
+func since(timestamp string) time.Duration {
+	parsed, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		return 0
+	}
+	return time.Since(parsed)
+}
+
+// humanizeDuration formats a duration (a time.Duration, a number of seconds, or
+// a parseable duration string) as a compact "1d 2h 3m 4s".
+func humanizeDuration(value any) string {
+	var duration time.Duration
+	switch typed := value.(type) {
+	case time.Duration:
+		duration = typed
+	case float64:
+		duration = time.Duration(typed * float64(time.Second))
+	case int:
+		duration = time.Duration(typed) * time.Second
+	case int64:
+		duration = time.Duration(typed) * time.Second
+	case string:
+		parsed, err := time.ParseDuration(typed)
+		if err != nil {
+			return typed
+		}
+		duration = parsed
+	default:
+		return fmt.Sprint(value)
+	}
+
+	if duration < 0 {
+		duration = -duration
+	}
+	duration = duration.Round(time.Second)
+
+	days := duration / (24 * time.Hour)
+	duration -= days * 24 * time.Hour
+	hours := duration / time.Hour
+	duration -= hours * time.Hour
+	minutes := duration / time.Minute
+	duration -= minutes * time.Minute
+	seconds := duration / time.Second
+
+	parts := make([]string, 0, 4)
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%dd", days))
+	}
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%dh", hours))
+	}
+	if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%dm", minutes))
+	}
+	if seconds > 0 || len(parts) == 0 {
+		parts = append(parts, fmt.Sprintf("%ds", seconds))
+	}
+	return strings.Join(parts, " ")
+}
+
+const defaultGrafanaTemplate = `{{ if eq .State "alerting" }}❗{{ else }}✅{{ end }} {{ .Title }}
+{{ .RuleName }}
+{{ .Message }}
+{{ .RuleUrl }}`
+
+const defaultAlertmanageTemplate = `{{ if eq .Alert.Status "firing" }}🚨{{ else }}✅{{ end }} **{{ .Alertname }}**{{ if ne .Alert.Status "firing" }} — RESOLVED{{ end }}
+{{- with .Annotations.summary }}
+
+📋 {{ . }}{{ end }}
+{{- with .Annotations.description }}
+ℹ️ {{ . }}{{ else }}{{ with $.Annotations.message }}
+💬 {{ . }}{{ end }}{{ end }}
+{{- with .Alert.Labels.severity }}
+
+⚠️ Severity: {{ . }}{{ end }}
+{{- with .Alert.Labels.instance }}
+🖥️ Instance: {{ . }}{{ else }}{{ with $.Alert.Labels.node }}
+🖥️ Instance: {{ . }}{{ else }}{{ with $.Alert.Labels.host }}
+🖥️ Instance: {{ . }}{{ end }}{{ end }}{{ end }}
+{{- with .Alert.Labels.job }}
+🔧 Job: {{ . }}{{ end }}
+{{- with .Alert.Labels.environment }}
+🌍 Environment: {{ . }}{{ end }}
+{{- if eq .Alert.Status "firing" }}{{ with .Alert.StartsAt }}
+⏱️ Duration: {{ humanizeDuration (since .) }}{{ end }}{{ end }}
+{{- if and .Config.GeneratorURL .Alert.GeneratorURL }}
+
+🔗 {{ .Alert.GeneratorURL }}{{ end }}
+`
+
 func main() {
 	slog.SetDefault(slog.New(
 		tint.NewHandler(os.Stdout, &tint.Options{
@@ -60,34 +160,6 @@ func main() {
 			TimeFormat: time.TimeOnly,
 		}),
 	))
-
-	const defaultGrafanaTemplate = `{{ if eq .State "alerting" }}❗{{ else }}✅{{ end }} {{ .Title }}
-{{ .RuleName }}
-{{ .Message }}
-{{ .RuleUrl }}`
-
-	const defaultAlertmanageTemplate = `{{ if eq .Alert.Status "firing" }}❗{{ else }}✅{{ end }} Alert **{{ .Alertname }}** is {{ .Alert.Status }}
-
-{{- if gt (len (.Alert.Labels)) 0 }}
-
-Labels:
-{{- range $key, $value := .Alert.Labels }}
-  - {{ $key }}: {{ $value }}
-{{- end }}
-{{- end }}
-
-{{- if gt (len (.Alert.Annotations)) 0 }}
-
-Annotations:
-{{- range $key, $value := .Alert.Annotations }}
-  - {{ $key }}: {{ $value }}
-{{- end }}
-{{- end }}
-
-{{- if .Config.GeneratorURL }}
-{{ .Alert.GeneratorURL}}
-{{ end -}}
-`
 
 	configPath := util.StringDefault(os.Getenv("CONFIG_PATH"), "/config.yaml")
 
@@ -97,13 +169,13 @@ Annotations:
 		os.Exit(1)
 	}
 
-	grafanaTemplate, err := template.New("grafana").Parse(util.StringDefault(cfg.Templates.Grafana, defaultGrafanaTemplate))
+	grafanaTemplate, err := template.New("grafana").Funcs(templateFuncs).Parse(util.StringDefault(cfg.Templates.Grafana, defaultGrafanaTemplate))
 	if err != nil {
 		slog.Error("error parsing grafana template", "err", err)
 		os.Exit(1)
 	}
 
-	alertmanagerTemplate, err := template.New("alertmanager").Parse(util.StringDefault(cfg.Templates.Alertmanager, defaultAlertmanageTemplate))
+	alertmanagerTemplate, err := template.New("alertmanager").Funcs(templateFuncs).Parse(util.StringDefault(cfg.Templates.Alertmanager, defaultAlertmanageTemplate))
 	if err != nil {
 		slog.Error("error parsing alertmanager template", "err", err)
 		os.Exit(1)
