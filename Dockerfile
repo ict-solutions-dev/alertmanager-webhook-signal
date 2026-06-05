@@ -1,9 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# ---- Build stage ----
 FROM golang:1.26-alpine AS build
 
-# Build a fully static binary from the vendored dependencies (no module downloads).
 ENV CGO_ENABLED=0 \
     GOFLAGS=-mod=vendor
 
@@ -11,13 +9,11 @@ WORKDIR /src
 
 COPY . .
 
-# Version is injected at build time (see docker.yml: release tag or `git describe`).
 ARG APP_VERSION=dev
 RUN go build -trimpath \
     -ldflags="-s -w -X main.appVersion=${APP_VERSION}" \
     -o /out/alertmanager-webhook-signal .
 
-# ---- Runtime stage ----
 FROM alpine:3.23
 
 ARG APP_VERSION=dev
@@ -29,7 +25,6 @@ LABEL org.opencontainers.image.source="https://github.com/ict-solutions-dev/aler
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${APP_VERSION}"
 
-# bash for the entrypoint, ca-certificates for outbound HTTPS (e.g. Grafana images).
 # hadolint ignore=DL3018
 RUN apk add --no-cache bash ca-certificates && \
     addgroup -g 35505 -S app && \

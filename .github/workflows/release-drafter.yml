@@ -17,14 +17,6 @@ permissions:
   pull-requests: write
 
 jobs:
-  # Apply Conventional-Commit-style labels (`feat`, `fix`, `chore`,
-  # `refactor`, `docs`, `test`, `breaking`) to the PR based on its
-  # title. release-drafter v7 split the drafter and the autolabeler
-  # into separate sub-actions; without this job nothing labels PRs and
-  # the draft release notes lose their per-section grouping.
-  #
-  # Skip on `labeled` / `unlabeled` events to avoid a feedback loop
-  # when the autolabeler itself adds the label.
   autolabel:
     if: github.event_name == 'pull_request_target' && github.event.action != 'labeled' && github.event.action != 'unlabeled'
     runs-on: ubuntu-latest
