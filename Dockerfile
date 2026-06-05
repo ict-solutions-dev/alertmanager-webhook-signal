@@ -15,7 +15,7 @@ ARG APP_VERSION=dev
 RUN go build -trimpath -ldflags="-s -w" -o /out/alertmanager-webhook-signal .
 
 # ---- Runtime stage ----
-FROM alpine:3.21
+FROM alpine:3.23
 
 LABEL org.opencontainers.image.source="https://github.com/ict-solutions-dev/alertmanager-webhook-signal" \
       org.opencontainers.image.description="Webhook bridge translating Alertmanager and Grafana alerts to signal-cli-rest-api." \
