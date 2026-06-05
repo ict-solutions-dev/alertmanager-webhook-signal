@@ -1,6 +1,13 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 
+# Pre-1.0: every drafted release is a pre-release. Flip to false for v1.0.0.
+prerelease: true
+# Count existing pre-release tags when resolving the next version, otherwise
+# release-drafter ignores the published v0.1.0 pre-release and keeps re-drafting
+# v0.1.0 with "no comparison baseline".
+include-pre-releases: true
+
 categories:
   - title: '🚀 Features'
     labels:
