@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- Build stage ----
-FROM golang:1.25-alpine AS build
+FROM golang:1.26-alpine AS build
 
 # Build a fully static binary from the vendored dependencies (no module downloads).
 ENV CGO_ENABLED=0 \
