@@ -35,58 +35,7 @@ jobs:
 
   update-release-draft:
     runs-on: ubuntu-latest
-    outputs:
-      resolved_version: ${{ steps.drafter.outputs.resolved_version }}
     steps:
-      - id: drafter
-        uses: release-drafter/release-drafter@v7
+      - uses: release-drafter/release-drafter@v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # Push the upcoming version (the one shown in the draft release) into
-  # version.txt on develop so the embedded app version always reflects
-  # what's actually in the codebase. Without this the app would keep
-  # advertising the previous released version even after a feature is
-  # already merged.
-  #
-  # Only runs on push to develop — pull_request_target runs can't push
-  # back to the repo and don't need to. The bot commit ends with
-  # [skip ci] so this auto-push doesn't re-trigger the workflow.
-  sync-version-txt:
-    needs: update-release-draft
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop' && needs.update-release-draft.outputs.resolved_version != ''
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out develop
-        uses: actions/checkout@v6
-        with:
-          ref: develop
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update version.txt if changed
-        id: bump
-        run: |
-          # Drafter outputs the bare version (e.g. `1.2.0`). On develop
-          # the build is always a pre-release of that version, so the
-          # embedded version should be `vX.Y.Z-edge`.
-          new="v${{ needs.update-release-draft.outputs.resolved_version }}-edge"
-          current="$(cat version.txt 2>/dev/null || echo '')"
-          if [ "$new" = "$current" ]; then
-            echo "version.txt already at $current — nothing to do"
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          printf '%s' "$new" > version.txt
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "Updated version.txt: $current → $new"
-
-      - name: Commit and push
-        if: steps.bump.outputs.changed == 'true'
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add version.txt
-          # [skip ci] keeps this self-induced push from re-triggering
-          # the same workflow in a loop.
-          git commit -m "chore(release): bump version.txt to v${{ needs.update-release-draft.outputs.resolved_version }}-edge [skip ci]"
-          git push origin develop

@@ -4,12 +4,11 @@ import (
 	"alertmanager-webhook-signal/internal/alerts"
 	"alertmanager-webhook-signal/internal/config"
 	"alertmanager-webhook-signal/internal/util"
-	_ "embed"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
+	"runtime/debug"
 	"text/template"
 	"time"
 
@@ -17,11 +16,42 @@ import (
 	"github.com/schlauerlauer/go-middleware"
 )
 
-//go:embed version.txt
-var appVersionRaw string
+// appVersion is injected at build time via -ldflags "-X main.appVersion=..."
+// (release tag or `git describe` in CI). It defaults to "dev" otherwise.
+var appVersion = "dev"
 
-// appVersion is the running version, sourced from version.txt at build time.
-var appVersion = strings.TrimSpace(appVersionRaw)
+// version is the effective version reported at runtime. For local builds with
+// no injected version, it falls back to the VCS revision Go embeds automatically
+// (e.g. "dev-1a2b3c4d5e6f" or "dev-1a2b3c4d5e6f-dirty").
+var version = resolveVersion()
+
+func resolveVersion() string {
+	if appVersion != "dev" {
+		return appVersion
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return appVersion
+	}
+	var revision, suffix string
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			revision = setting.Value
+		case "vcs.modified":
+			if setting.Value == "true" {
+				suffix = "-dirty"
+			}
+		}
+	}
+	if revision == "" {
+		return appVersion
+	}
+	if len(revision) > 12 {
+		revision = revision[:12]
+	}
+	return "dev-" + revision + suffix
+}
 
 func main() {
 	slog.SetDefault(slog.New(
@@ -91,7 +121,7 @@ Annotations:
 		_, _ = w.Write([]byte("pong"))
 	})
 	mux.HandleFunc("GET /version", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(appVersion))
+		_, _ = w.Write([]byte(version))
 	})
 
 	mux.HandleFunc("POST /alertmanager", alert.Alertmanager)
@@ -104,7 +134,7 @@ Annotations:
 	listenInterface := util.StringDefault(cfg.Server.Interface, "0.0.0.0")
 	listenPort := util.StringDefault(cfg.Server.Port, "10000")
 
-	slog.Info("Server starting", "version", appVersion, "interface", listenInterface, "port", listenPort)
+	slog.Info("Server starting", "version", version, "interface", listenInterface, "port", listenPort)
 	if err := http.ListenAndServe(fmt.Sprint(listenInterface, ":", listenPort), middleware.Logging(mux)); err != nil {
 		slog.Error("error starting server", "err", err)
 		os.Exit(1)

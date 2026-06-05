@@ -11,18 +11,23 @@ WORKDIR /src
 
 COPY . .
 
-# Version is sourced from version.txt (embedded via //go:embed in main.go).
-RUN go build -trimpath -ldflags="-s -w" -o /out/alertmanager-webhook-signal .
+# Version is injected at build time (see docker.yml: release tag or `git describe`).
+ARG APP_VERSION=dev
+RUN go build -trimpath \
+    -ldflags="-s -w -X main.appVersion=${APP_VERSION}" \
+    -o /out/alertmanager-webhook-signal .
 
 # ---- Runtime stage ----
 FROM alpine:3.23
 
+ARG APP_VERSION=dev
 LABEL org.opencontainers.image.source="https://github.com/ict-solutions-dev/alertmanager-webhook-signal" \
       org.opencontainers.image.description="Webhook bridge translating Alertmanager and Grafana alerts to signal-cli-rest-api." \
       org.opencontainers.image.title="Alertmanager Webhook Signal" \
       org.opencontainers.image.authors="Jozef Rebjak <jozef.rebjak@ictsolutions.net>" \
       org.opencontainers.image.vendor="ICT Solutions" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${APP_VERSION}"
 
 # bash for the entrypoint, ca-certificates for outbound HTTPS (e.g. Grafana images).
 # hadolint ignore=DL3018
