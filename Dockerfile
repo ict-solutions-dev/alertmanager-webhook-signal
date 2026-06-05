@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- Build stage ----
-FROM golang:1.25-alpine AS build
+FROM golang:1.26-alpine AS build
 
 # Build a fully static binary from the vendored dependencies (no module downloads).
 ENV CGO_ENABLED=0 \
@@ -15,7 +15,7 @@ ARG APP_VERSION=dev
 RUN go build -trimpath -ldflags="-s -w" -o /out/alertmanager-webhook-signal .
 
 # ---- Runtime stage ----
-FROM alpine:3.21
+FROM alpine:3.23
 
 LABEL org.opencontainers.image.source="https://github.com/ict-solutions-dev/alertmanager-webhook-signal" \
       org.opencontainers.image.description="Webhook bridge translating Alertmanager and Grafana alerts to signal-cli-rest-api." \
