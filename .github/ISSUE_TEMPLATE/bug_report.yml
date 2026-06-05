@@ -1,0 +1,80 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug. Please fill out the form below.
+
+  - type: input
+    id: image-tag
+    attributes:
+      label: Image Tag
+      description: "Which image tag are you using?"
+      placeholder: "e.g. 1.1.1 or edge"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - linux/amd64
+        - linux/arm64
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Alert Source
+      options:
+        - Alertmanager
+        - Grafana
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: "What happened? What did you expect to happen?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: "Minimal steps to reproduce the issue."
+      placeholder: |
+        1. POST this payload to /alertmanager
+        2. Observe error in logs
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant config.yaml
+      description: "Paste the relevant parts of your config.yaml (redact numbers/group IDs)."
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: "Paste any relevant container logs (redact secrets)."
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: "Docker version, OS, orchestrator, etc."
+      placeholder: |
+        Docker: 27.x
+        OS: Ubuntu 24.04
+        Orchestrator: Docker Compose / Kubernetes / Swarm

@@ -1,0 +1,65 @@
+# Full reference configuration for alertmanager-webhook-signal.
+#
+# This file is only needed for the OPTIONAL static-config mode: mount it at
+# /config.yaml (read-only) and the entrypoint uses it as-is. Otherwise the
+# configuration is generated from environment variables (see the README).
+#
+# Alertmanager webhook url: POST /alertmanager
+# Grafana webhook url:      POST /grafana
+
+server:
+  port: "10000" # port this program listens on; required
+  interface: "0.0.0.0" # bind interface; optional
+  debug: false # verbose payload logging; optional
+
+signal:
+  number: "+421918533760" # number messages are sent from; required
+  send: "http://signal-api:8080/v2/send" # signal-cli-rest-api endpoint; required
+  textmodeNormal: false # true = text_mode "normal", false = "styled" (markdown)
+  recipients: # default recipient(s) when an alert has no `recipients` label; required
+    - "group.REPLACE_ME_DEFAULT"
+
+alertmanager:
+  ignoreLabels: # labels filtered out of the rendered message; optional
+    - "alertname"
+    - "recipients"
+  ignoreAnnotations: [] # annotations filtered out of the rendered message; optional
+  generatorURL: true # include the generator URL in the message; optional (default: false)
+
+# Maps `recipients` alert-label values to Signal recipients.
+# A rule labelled `recipients: proxmox` is delivered to the proxmox group.
+# Groups are addressed as "group.<ID>" — get IDs with:
+#   docker exec signal-api curl -s "http://signal-api:8080/v1/groups/+421918533760" | jq '.[] | {name, id}'
+recipients:
+  proxmox: "group.REPLACE_ME_PROXMOX"
+  critical: "group.REPLACE_ME_CRITICAL"
+
+# Optional Go templates. Omit to use the built-in defaults.
+templates:
+  grafana: |-
+    {{ if eq .State "alerting" }}❗{{ else }}✅{{ end }} {{ .Title}}
+    {{ .RuleName }}
+    {{ .Message }}
+    {{ .RuleUrl }}
+  alertmanager: |-
+    {{ if eq .Alert.Status "firing" }}❗{{ else }}✅{{ end }} Alert **{{ .Alertname }}** is {{ .Alert.Status }}
+
+    {{- if gt (len (.Alert.Labels)) 0 }}
+
+    Labels:
+    {{- range $key, $value := .Alert.Labels }}
+      - {{ $key }}: {{ $value }}
+    {{- end }}
+    {{- end }}
+
+    {{- if gt (len (.Alert.Annotations)) 0 }}
+
+    Annotations:
+    {{- range $key, $value := .Alert.Annotations }}
+      - {{ $key }}: {{ $value }}
+    {{- end }}
+    {{- end }}
+
+    {{- if .Config.GeneratorURL }}
+    {{ .Alert.GeneratorURL}}
+    {{ end -}}

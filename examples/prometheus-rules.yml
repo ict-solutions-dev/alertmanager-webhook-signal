@@ -1,0 +1,16 @@
+# Routing to Signal groups is done with the `recipients` label, which the bridge
+# maps to Signal recipients (see RECIPIENT_<NAME> env vars / the recipients map):
+#
+#   recipients: "proxmox"          -> proxmox group
+#   recipients: "proxmox,critical" -> both groups
+#   (no recipients label)          -> default group (SIGNAL_RECIPIENTS)
+
+groups:
+  - name: "examples.rules"
+    rules:
+      - alert: "Watchdog"
+        annotations:
+          message: "This is a heartbeat alert; it should always fire. Goes to the default group."
+        # Add `labels: { recipients: "proxmox" }` to route an alert to a specific group.
+        expr: "vector(1)"
+        for: "1m"

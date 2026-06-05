@@ -1,0 +1,136 @@
+name: Docker Image Publish
+
+on:
+  push:
+    branches:
+      - develop
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GHCR_IMAGE_NAME: alertmanager-webhook-signal
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+      security-events: write
+      actions: read
+      id-token: write
+      attestations: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Lint Dockerfile with hadolint
+        uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: Dockerfile
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare tags
+        id: prep
+        shell: bash
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$GHCR_IMAGE_NAME
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            RELEASE_VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            RELEASE_VERSION=edge
+          fi
+
+          echo "tags=${IMAGE_ID}:${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.prep.outputs.tags }}
+          build-args: |
+            APP_VERSION=${{ steps.prep.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        if: github.event_name != 'pull_request' && success()
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: ${{ steps.prep.outputs.tags }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        if: github.event_name != 'pull_request' && success()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: standard
+
+      - name: Generate SBOM
+        if: github.event_name != 'pull_request' && success()
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: ${{ steps.prep.outputs.tags }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Upload SBOM as artifact
+        if: github.event_name != 'pull_request' && success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-${{ github.run_id }}
+          path: sbom.spdx.json
+
+      - name: Attest build provenance
+        if: github.event_name != 'pull_request' && success()
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ steps.prep.outputs.tags }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+
+      - name: Job Summary
+        run: |
+          echo "### Docker Build Summary 🐳" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Information:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Image: \`${{ steps.prep.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Platforms: linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Security & Compliance:**" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "- ✅ Vulnerability scan completed" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ SBOM generated (artifact: sbom-${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Build provenance attested" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Images pushed to GHCR" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🔍 Build-only mode (PR)" >> $GITHUB_STEP_SUMMARY
+            echo "- ⏭️ Security scans skipped" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow:** ${{ github.workflow }} (#${{ github.run_number }})" >> $GITHUB_STEP_SUMMARY

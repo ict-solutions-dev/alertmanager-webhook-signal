@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: signal-cli-rest-api
+    url: https://github.com/bbernhard/signal-cli-rest-api
+    about: The Signal REST API this bridge sends messages to
+  - name: Alertmanager webhook configuration
+    url: https://prometheus.io/docs/alerting/latest/configuration/#webhook_config
+    about: Prometheus Alertmanager webhook receiver reference

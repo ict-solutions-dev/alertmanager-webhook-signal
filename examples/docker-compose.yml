@@ -1,0 +1,63 @@
+# Example deployment alongside signal-api, exposed through Traefik with the same
+# IP allow-list as signal-api so Alertmanager (on the Prometheus/Proxmox host)
+# can POST to it at a subpath.
+#
+# Configuration is generated from environment variables at startup. Sensitive
+# values can be provided as Docker / Swarm secrets via the "<NAME>__FILE" suffix.
+#
+# Adjust the network name, Traefik entrypoint/certresolver, and the allow-list
+# source range to match your stack.
+
+services:
+  alertmanager-webhook-signal:
+    image: ghcr.io/ict-solutions-dev/alertmanager-webhook-signal:edge
+    container_name: alertmanager-webhook-signal
+    restart: unless-stopped
+    environment:
+      # Sending number via a Swarm secret (mounted at /run/secrets/signal_number).
+      SIGNAL_NUMBER__FILE: /run/secrets/signal_number
+      SIGNAL_SEND: "http://signal-api:8080/v2/send"
+      # Default group for alerts without a `recipients` label.
+      SIGNAL_RECIPIENTS: "group.DEFAULT_ID"
+      # recipients-label -> Signal group mapping. Use *__FILE for secret values.
+      RECIPIENT_PROXMOX: "group.PROXMOX_ID"
+      RECIPIENT_CRITICAL__FILE: /run/secrets/critical_group
+      # text_mode "styled" (markdown). Set true for "normal".
+      SIGNAL_TEXTMODE_NORMAL: "false"
+    secrets:
+      - signal_number
+      - critical_group
+    networks:
+      # Same network as the signal-api container so it can be reached internally.
+      - signal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=signal"
+
+      # Route a subpath to the bridge and strip the prefix before forwarding.
+      - "traefik.http.routers.signal-bridge.rule=Host(`alerts.example.com`) && PathPrefix(`/signal-bridge`)"
+      - "traefik.http.routers.signal-bridge.entrypoints=websecure"
+      - "traefik.http.routers.signal-bridge.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.signal-bridge.middlewares=signal-bridge-stripprefix,signal-bridge-ipallowlist"
+      - "traefik.http.services.signal-bridge.loadbalancer.server.port=10000"
+
+      - "traefik.http.middlewares.signal-bridge-stripprefix.stripprefix.prefixes=/signal-bridge"
+
+      # Same IP allow-list as signal-api — restrict to the alerting host(s).
+      - "traefik.http.middlewares.signal-bridge-ipallowlist.ipallowlist.sourcerange=10.0.0.0/24,192.0.2.10/32"
+
+    # --- Alternative: static config file instead of environment variables ---
+    # Mount a ready config.yaml at /config.yaml (read-only) and it is used as-is.
+    # volumes:
+    #   - ./config.yaml:/config.yaml:ro
+
+secrets:
+  signal_number:
+    file: ./secrets/signal_number.txt
+  critical_group:
+    file: ./secrets/critical_group.txt
+
+networks:
+  signal:
+    # Reuse the existing network that signal-api is attached to.
+    external: true

@@ -1,0 +1,199 @@
+package alerts
+
+import (
+	"alertmanager-webhook-signal/internal/config"
+	"alertmanager-webhook-signal/internal/model"
+	"alertmanager-webhook-signal/internal/util"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"strings"
+	"text/template"
+)
+
+type Alert struct {
+	config               *config.ConfigData
+	grafanaTemplate      *template.Template
+	alertmanagerTemplate *template.Template
+}
+
+type alertTemplateData struct {
+	Alertname   string
+	Alert       model.AMAlert
+	Config      config.AlertmanagerConfig
+	Labels      map[string]any
+	Annotations map[string]any
+}
+
+func NewAlert(
+	config *config.ConfigData,
+	grafanaTemplate *template.Template,
+	alertmanagerTemplate *template.Template,
+) *Alert {
+	return &Alert{
+		config:               config,
+		grafanaTemplate:      grafanaTemplate,
+		alertmanagerTemplate: alertmanagerTemplate,
+	}
+}
+
+func (al *Alert) Alertmanager(w http.ResponseWriter, req *http.Request) {
+	buff, _ := io.ReadAll(req.Body)
+
+	var alert model.Alertmanager
+	err := json.Unmarshal(buff, &alert)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		slog.Error("could not unmarshal json", "err", err)
+		return
+	}
+
+	messages := al.alertToSignal(alert)
+	for _, message := range messages {
+		if code, err := al.sendSignal(message); err != nil {
+			slog.Warn("error sending signal message", "err", err, "statusCode", code)
+		}
+	}
+}
+
+func (al *Alert) Grafana(w http.ResponseWriter, req *http.Request) {
+	buff, _ := io.ReadAll(req.Body)
+
+	var alert model.GrafanaAlert
+	err := json.Unmarshal(buff, &alert)
+	if err != nil {
+		slog.Error("could not unmarshal json", "err", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	message := al.grafanaToSignal(alert)
+	if code, err := al.sendSignal(message); err != nil {
+		slog.Warn("error sending signal message", "err", err, "code", code)
+		if code >= 100 {
+			w.WriteHeader(code)
+		}
+	}
+}
+
+func (al *Alert) sendSignal(message model.SignalMessage) (int, error) {
+	payloadBuf := new(bytes.Buffer)
+	if err := json.NewEncoder(payloadBuf).Encode(message); err != nil {
+		return 400, fmt.Errorf("error encoding signal message, err: %s", err)
+	}
+	if al.config.Server.Debug {
+		slog.Debug("payload", "message", payloadBuf)
+	}
+	req, _ := http.NewRequest("POST", al.config.Signal.Send, payloadBuf)
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		return 400, fmt.Errorf("error sending signal message, err: %s", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= 400 {
+		body, err := io.ReadAll(res.Body)
+		if err == nil {
+			slog.Warn("response", "body", string(body))
+		}
+		return res.StatusCode, fmt.Errorf("error sending signal message, err: %s", err)
+	}
+
+	return http.StatusOK, nil
+}
+
+func (al *Alert) grafanaToSignal(alert model.GrafanaAlert) model.SignalMessage {
+	var message bytes.Buffer
+	err := al.grafanaTemplate.Execute(&message, alert)
+	if err != nil {
+		slog.Error("could not execute grafana message template", "err", err)
+	}
+
+	signal := model.SignalMessage{
+		Message:    message.String(),
+		Number:     al.config.Signal.Number,
+		Recipients: al.config.Signal.Recipients,
+		TextMode:   util.Ternary(al.config.Signal.TextModeNormal, "normal", "styled"),
+	}
+
+	if alert.ImageUrl != "" {
+		attachment, err := util.GetImage(alert.ImageUrl)
+		if err != nil {
+			slog.Warn("could not attach image to signal message", "err", err)
+		} else {
+			signal.Attachments = &[]string{
+				attachment,
+			}
+		}
+	}
+
+	return signal
+}
+
+func (al *Alert) alertToSignal(alert model.Alertmanager) []model.SignalMessage {
+	var messages []model.SignalMessage
+
+	for _, alertElement := range alert.Alerts {
+		customRecipients := []string{}
+		seenRecipients := map[string]struct{}{}
+		alertName := alertElement.Labels["alertname"].(string)
+
+		if recipients, ok := alertElement.Labels["recipients"]; ok {
+			for _, r := range strings.Split(recipients.(string), ",") {
+				name := strings.TrimSpace(r)
+				if name == "" {
+					continue
+				}
+
+				if newReceiver, ok := al.config.Recipients[name]; ok {
+					if _, seen := seenRecipients[newReceiver]; !seen {
+						customRecipients = append(customRecipients, newReceiver)
+						seenRecipients[newReceiver] = struct{}{}
+					}
+				}
+			}
+		}
+
+		for _, annotation := range al.config.AMConfig.IgnoreAnnotations {
+			delete(alertElement.Annotations, annotation)
+		}
+		for _, label := range al.config.AMConfig.IgnoreLabels {
+			delete(alertElement.Labels, label)
+		}
+
+		var message bytes.Buffer
+		err := al.alertmanagerTemplate.Execute(&message, alertTemplateData{
+			Alertname:   alertName,
+			Alert:       alertElement,
+			Config:      al.config.AMConfig,
+			Labels:      alertElement.Labels,
+			Annotations: alertElement.Annotations,
+		})
+		if err != nil {
+			slog.Error("could not execute alertmanager message template", "err", err)
+		}
+
+		// determine recipients
+		recipients := al.config.Signal.Recipients
+		if len(customRecipients) > 0 {
+			recipients = customRecipients
+		}
+
+		// 🔑 create ONE message per recipient
+		for _, recipient := range recipients {
+			messages = append(messages, model.SignalMessage{
+				Message:     message.String(),
+				Number:      al.config.Signal.Number,
+				Recipients:  []string{recipient},
+				Attachments: nil,
+				TextMode:    util.Ternary(al.config.Signal.TextModeNormal, "normal", "styled"),
+			})
+		}
+	}
+
+	return messages
+}

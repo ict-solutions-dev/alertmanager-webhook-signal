@@ -1,0 +1,23 @@
+# Alertmanager configuration using a SINGLE Signal receiver.
+#
+# Unlike a Slack setup (one receiver per channel), all alerts go to one webhook
+# receiver. The bridge fans out to Signal groups based on the `recipients` label
+# on each alerting rule (see prometheus-rules.yml). Alerts without that label go
+# to the bridge's default group (signal.recipients in config.yaml).
+
+global:
+
+route:
+  receiver: "signal"
+  group_by:
+    - "alertname"
+  group_wait: "30s"
+  group_interval: "5m"
+  repeat_interval: "3h"
+
+receivers:
+  - name: "signal"
+    webhook_configs:
+      # Internal docker network name, or the Traefik subpath from outside.
+      - url: "http://alertmanager-webhook-signal:10000/alertmanager"
+        send_resolved: true
