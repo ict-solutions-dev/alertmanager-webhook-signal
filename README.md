@@ -174,6 +174,25 @@ Images are published to the [GitHub Container Registry](https://github.com/ict-s
 
 Built for `linux/amd64` and `linux/arm64` as a static (CGO-free) binary on a minimal Alpine base.
 
+## Versioning & Releases
+
+Releases follow [Conventional Commits](https://www.conventionalcommits.org/) via
+[Release Drafter](https://github.com/release-drafter/release-drafter):
+
+- PR titles are auto-labelled (`feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `breaking`) and each merge into
+  `develop` updates a **draft release** with the next version (`breaking` → major, `feat` → minor, else → patch).
+- To cut a release, publish the draft in the GitHub UI — that creates the `vX.Y.Z` tag, which triggers the Docker
+  pipeline to publish `ghcr.io/...:X.Y.Z`.
+
+The version reported by `/version` is **injected at build time** (`-ldflags -X main.appVersion`), so nothing is
+committed back to the repo and `develop` stays strictly protected:
+
+- **Release** (tag `vX.Y.Z`) → image `...:X.Y.Z`, version `vX.Y.Z`.
+- **Edge** (push to `develop`) → single moving `...:edge` image; the version inside reflects the commit via
+  `git describe` (e.g. `v1.1.1-4-gabc1234-edge`) and is also exposed as the `org.opencontainers.image.version` label.
+- **Local build** (`go build`/`go run`, no ldflags) → falls back to the VCS revision Go embeds automatically
+  (e.g. `dev-1a2b3c4d5e6f`, with `-dirty` for uncommitted changes).
+
 ## CI/CD Pipeline
 
 The [GitHub Actions workflow](.github/workflows/docker.yml) runs on push to `develop`, version tags (`v*`), pull

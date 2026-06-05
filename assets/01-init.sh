@@ -1,15 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-# Entrypoint for alertmanager-webhook-signal.
-#
-# Two modes:
-#   1. Static config  — mount a ready config.yaml at /config.yaml (read-only) and
-#                        it is used as-is.
-#   2. Generated config — otherwise the config is generated from environment
-#                         variables at startup. Every variable supports the
-#                         "<NAME>__FILE" suffix to read its value from a file
-#                         (Docker / Swarm secrets).
+# Use a mounted /config.yaml if present, otherwise generate it from environment
+# variables (each supports a <NAME>__FILE suffix for Docker/Swarm secrets).
 
 STATIC_CONFIG="/config.yaml"
 GENERATED_CONFIG="/tmp/config.yaml"
@@ -19,7 +12,6 @@ log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"
 }
 
-# Resolve "<NAME>__FILE" variables into "<NAME>" (Docker / Swarm secrets).
 process_secret_files() {
     for var_name in $(env | grep '^[^=]\+__FILE=.\+' | sed -r 's/^([^=]*)__FILE=.*/\1/g' || true); do
         var_name_file="${var_name}__FILE"
@@ -41,7 +33,6 @@ process_secret_files() {
     done
 }
 
-# Normalize a boolean-ish value to "true" / "false".
 normalize_bool() {
     case "$(echo "${1:-false}" | tr '[:upper:]' '[:lower:]')" in
         true|1|yes|on)   echo "true" ;;
@@ -68,7 +59,6 @@ validate_required_vars() {
     return 0
 }
 
-# Append a YAML list (one quoted item per comma-separated value) at a given indent.
 append_yaml_list() {
     local csv="$1" indent="$2" item
     local IFS=','
@@ -114,8 +104,6 @@ generate_config() {
     fi
     echo "  generatorURL: ${generator_url}" >>"$GENERATED_CONFIG"
 
-    # Recipient name -> Signal recipient map, from RECIPIENT_<NAME> variables.
-    # e.g. RECIPIENT_PROXMOX="group.xxx" becomes  proxmox: "group.xxx"
     local has_recipients=false line name value
     for line in $(env | grep '^RECIPIENT_[^=]\+=.\+' | sed -r 's/^(RECIPIENT_[^=]*)=.*/\1/g' || true); do
         if [ "$has_recipients" = false ]; then
@@ -127,7 +115,6 @@ generate_config() {
         printf '  %s: "%s"\n' "$name" "$value" >>"$GENERATED_CONFIG"
     done
 
-    # Optional message templates (raw template text, indented as a YAML block scalar).
     if [ -n "${TEMPLATE_GRAFANA:-}" ] || [ -n "${TEMPLATE_ALERTMANAGER:-}" ]; then
         echo "templates:" >>"$GENERATED_CONFIG"
         if [ -n "${TEMPLATE_GRAFANA:-}" ]; then
