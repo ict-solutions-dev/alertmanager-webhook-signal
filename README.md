@@ -161,6 +161,64 @@ networks:
 | `GET` | `/ping` | Liveness check (returns `pong`) |
 | `GET` | `/version` | Returns the application version |
 
+## Testing a Running Instance
+
+Replace `BRIDGE_URL` with where the service is reachable (e.g. `http://localhost:10000` internally, or
+`https://signal-alertmanager.example.com` through your reverse proxy). If it sits behind Basic Auth, add `-u USER:PASS`.
+
+### Health checks
+
+```bash
+curl BRIDGE_URL/ping        # -> pong
+curl BRIDGE_URL/version     # -> e.g. v0.1.0 (confirms which build is running)
+```
+
+Behind a reverse proxy, a `401` means Basic Auth failed and `403` means the source IP is not in the allow-list.
+
+### Send a test alert
+
+This posts a minimal Alertmanager payload and should produce a real Signal message:
+
+```bash
+curl -X POST BRIDGE_URL/alertmanager \
+  -H 'Content-Type: application/json' \
+  -d '{"alerts":[{"status":"firing","labels":{"alertname":"SignalBridgeTest","severity":"critical"},"annotations":{"message":"Test alert – if you see this in Signal, the bridge works."},"startsAt":"2024-01-01T00:00:00Z"}]}'
+```
+
+- No `recipients` label → delivered to the default group (`SIGNAL_RECIPIENTS`).
+- Add `"recipients":"proxmox"` (or `critical`) to `labels` to target a mapped group.
+- Set `"status":"resolved"` to test the resolved (✅) message.
+
+A successful call returns **HTTP 200 with an empty body** — the confirmation is the message arriving in Signal.
+
+### Send a test Grafana alert
+
+The `/grafana` endpoint accepts Grafana's classic webhook format. Grafana alerts always go to the default group
+(`SIGNAL_RECIPIENTS`) — the `recipients` label routing applies to Alertmanager only.
+
+```bash
+curl -X POST BRIDGE_URL/grafana \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Grafana test","ruleName":"SignalBridgeGrafanaTest","state":"alerting","message":"Test from Grafana – if you see this in Signal, it works.","ruleUrl":"https://grafana.example.com/d/abc"}'
+```
+
+`"state":"alerting"` renders ❗, any other state renders ✅. An `imageUrl` field, if present, is downloaded and attached.
+
+### If no message arrives
+
+1. Check the container logs — the bridge logs `WARN error sending signal message` with the status code returned by
+   signal-cli-rest-api:
+   ```bash
+   docker logs <container>            # or: docker service logs <stack>_alertmanager-webhook-signal
+   ```
+   Run with `SERVER_DEBUG=true` to also log the outgoing payload.
+2. Common causes: wrong group ID in `SIGNAL_RECIPIENTS`/`RECIPIENT_*`, the `signal.number` not registered in
+   signal-cli-rest-api, or the bridge not sharing a network with `signal-api`.
+3. Verify the group IDs against signal-cli-rest-api:
+   ```bash
+   docker exec <signal-api> curl -s "http://signal-api:8080/v1/groups/<NUMBER>" | jq '.[] | {name, id}'
+   ```
+
 ## Alertmanager & Prometheus
 
 Configure a **single** webhook receiver and route everything to it; the bridge handles per-group delivery via the
