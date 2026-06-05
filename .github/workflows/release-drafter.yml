@@ -57,22 +57,11 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop' && needs.update-release-draft.outputs.resolved_version != ''
     runs-on: ubuntu-latest
     steps:
-      # Mint a token from the ICT Version Bumper GitHub App so the
-      # auto-bump commit can land on `develop` despite the branch
-      # protection rule requiring a pull request — the App is on the
-      # bypass actor list. The default GITHUB_TOKEN is not.
-      - name: Mint App token
-        uses: actions/create-github-app-token@v3
-        id: app-token
-        with:
-          app-id: ${{ vars.VERSION_BUMPER_APPID }}
-          private-key: ${{ secrets.VERSION_BUMPER_SECRET }}
-
       - name: Check out develop
         uses: actions/checkout@v6
         with:
           ref: develop
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update version.txt if changed
         id: bump
@@ -94,8 +83,8 @@ jobs:
       - name: Commit and push
         if: steps.bump.outputs.changed == 'true'
         run: |
-          git config user.name 'ICT Version Bumper[bot]'
-          git config user.email 'noreply@github.com'
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add version.txt
           # [skip ci] keeps this self-induced push from re-triggering
           # the same workflow in a loop.
