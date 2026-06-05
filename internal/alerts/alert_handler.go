@@ -26,6 +26,7 @@ type alertTemplateData struct {
 	Config      config.AlertmanagerConfig
 	Labels      map[string]any
 	Annotations map[string]any
+	ExternalURL string
 }
 
 func NewAlert(
@@ -172,6 +173,7 @@ func (al *Alert) alertToSignal(alert model.Alertmanager) []model.SignalMessage {
 			Config:      al.config.AMConfig,
 			Labels:      alertElement.Labels,
 			Annotations: alertElement.Annotations,
+			ExternalURL: alert.ExternalURL,
 		})
 		if err != nil {
 			slog.Error("could not execute alertmanager message template", "err", err)
