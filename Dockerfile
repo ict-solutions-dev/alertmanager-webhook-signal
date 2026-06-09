@@ -14,7 +14,7 @@ RUN go build -trimpath \
     -ldflags="-s -w -X main.appVersion=${APP_VERSION}" \
     -o /out/alertmanager-webhook-signal .
 
-FROM alpine:3.23
+FROM alpine:3.24
 
 ARG APP_VERSION=dev
 LABEL org.opencontainers.image.source="https://github.com/ict-solutions-dev/alertmanager-webhook-signal" \
